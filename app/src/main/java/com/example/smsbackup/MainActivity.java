@@ -1,9 +1,11 @@
 package com.example.smsbackup;
 
 import android.Manifest;
+import android.app.Application;
 import android.content.ContentResolver;
 import android.database.Cursor;
 import android.os.Bundle;
+import android.os.Environment;
 import android.provider.Telephony;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -20,6 +22,11 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+
 public class MainActivity extends AppCompatActivity {
 
     private AppBarConfiguration appBarConfiguration;
@@ -29,17 +36,13 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        String[] projection = new String[]{
-                Telephony.TextBasedSmsColumns.ADDRESS,
-                Telephony.TextBasedSmsColumns.CREATOR,
-                Telephony.TextBasedSmsColumns.DATE_SENT,
-                Telephony.TextBasedSmsColumns.BODY,
-                Telephony.TextBasedSmsColumns.SUBJECT
-        };
-
         ActivityCompat.requestPermissions(
                 this,
-                new String[]{Manifest.permission.READ_SMS},
+                new String[]{
+                        Manifest.permission.READ_SMS,
+                        Manifest.permission.READ_EXTERNAL_STORAGE,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE
+                },
                 1
         );
 
@@ -48,7 +51,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             cursor = cr.query(
                     Telephony.Sms.CONTENT_URI,
-                    projection,
+                    new String[]{"*"},
                     null,
                     null,
                     null
@@ -58,32 +61,58 @@ public class MainActivity extends AppCompatActivity {
         }
 
         if (cursor != null) {
-            int addressCol = cursor.getColumnIndex(Telephony.TextBasedSmsColumns.ADDRESS);
-            int creatorCol = cursor.getColumnIndex(Telephony.TextBasedSmsColumns.CREATOR);
-            int dateSentCol = cursor.getColumnIndex(Telephony.TextBasedSmsColumns.DATE_SENT);
-            int bodyCol = cursor.getColumnIndex(Telephony.TextBasedSmsColumns.BODY);
-            int subjectCol = cursor.getColumnIndex(Telephony.TextBasedSmsColumns.SUBJECT);
+            File smsFile = null;
+            String path =
+                    Environment.getExternalStorageDirectory() +
+                            File.separator +
+                            "Download" +
+                            File.separator +
+                            "sms_backup.txt";
+            Log.d("MY_APP", "path: " + path);
+            smsFile = new File(path);
 
-            int maxMsgs = 10;
-            while (cursor.moveToNext() && maxMsgs-- > 0) {
-                String address = cursor.getString(addressCol);
-                String creator = cursor.getString(creatorCol);
-                String dateSent = cursor.getString(dateSentCol);
-                String body = cursor.getString(bodyCol);
-                String subject = cursor.getString(subjectCol);
+            try {
+                if (!smsFile.exists()) {
+                    Log.d("MY_APP", "sms_backup.txt does not exist, trying to create");
+                    smsFile.createNewFile();
+                } else {
+                    Log.d("MY_APP", "sms_backup.txt does exist, skipping creation");
+                }
 
-                StringBuffer sb = new StringBuffer();
-                sb.append(address);
-                sb.append(", ");
-                sb.append(creator);
-                sb.append(", ");
-                sb.append(dateSent);
-                sb.append(", ");
-                sb.append(body);
-                sb.append(", ");
-                sb.append(subject);
+                FileWriter fw = new FileWriter(smsFile, false);
 
-                Log.d("MY_APP", sb.toString());
+                String[] columnNames = cursor.getColumnNames();
+                StringBuilder header = new StringBuilder();
+                for (int i = 0; i < columnNames.length; ++i) {
+                    header.append(columnNames[i]);
+                    if (i < columnNames.length - 1) {
+                        header.append(", ");
+                    }
+                }
+                header.append("\n");
+                fw.write(header.toString());
+
+                int numTexts = cursor.getCount();
+
+                int curMsg = 0;
+                while (cursor.moveToNext()) {
+                    int numCols = cursor.getColumnCount();
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 0; i < numCols; ++i) {
+                        sb.append(cursor.getString(i));
+                        if (i < numCols-1) {
+                            sb.append(", ");
+                        }
+                    }
+                    sb.append("\n");
+
+                    fw.write(sb.toString());
+                    Log.d("MY_APP", curMsg++ + "/" + numTexts);
+                }
+
+                fw.close();
+            } catch (IOException e) {
+                e.printStackTrace();
             }
         }
 
